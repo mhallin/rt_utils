@@ -3,6 +3,7 @@ name = "rt_utils"
 version = "0.1.0"
 authors = ["Magnus Hallin <mhallin@fastmail.com>"]
 edition = "2018"
+license = "MIT"
 
 [dependencies]
 
