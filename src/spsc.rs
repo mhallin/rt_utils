@@ -14,7 +14,7 @@ pub struct Receiver<T> {
 }
 
 impl<T> Sender<T> {
-    pub fn try_send(&self, value: T) -> bool {
+    pub fn try_send(&self, value: T) -> Result<(), T> {
         self.buffer.try_write(value)
     }
 
@@ -95,12 +95,12 @@ impl<T> RingBuffer<T> {
         self.read_index.store(0, Ordering::SeqCst);
     }
 
-    fn try_write(&self, value: T) -> bool {
+    fn try_write(&self, value: T) -> Result<(), T> {
         let write_index = self.write_index.load(Ordering::Relaxed);
         let read_index = self.read_index.load(Ordering::Acquire);
 
         if available_write(write_index, read_index, self.size) == 0 {
-            return false;
+            return Err(value);
         }
 
         unsafe { ptr::write(self.entries.as_ptr().add(write_index), value) };
@@ -108,7 +108,7 @@ impl<T> RingBuffer<T> {
         self.write_index
             .store((write_index + 1) % self.size, Ordering::Release);
 
-        true
+        Ok(())
     }
 
     fn try_read(&self) -> Option<T> {
@@ -198,15 +198,15 @@ mod test {
     #[test]
     fn single() {
         let (send, recv) = channel(4);
-        assert!(send.try_send(4));
+        assert!(send.try_send(4).is_ok());
         assert_eq!(recv.try_recv(), Some(4));
     }
 
     #[test]
     fn multiple() {
         let (send, recv) = channel(4);
-        assert!(send.try_send(4));
-        assert!(send.try_send(5));
+        assert!(send.try_send(4).is_ok());
+        assert!(send.try_send(5).is_ok());
         assert_eq!(recv.try_recv(), Some(4));
         assert_eq!(recv.try_recv(), Some(5));
     }
@@ -214,17 +214,17 @@ mod test {
     #[test]
     fn interleaved() {
         let (send, recv) = channel(4);
-        assert!(send.try_send(4));
+        assert!(send.try_send(4).is_ok());
         assert_eq!(recv.try_recv(), Some(4));
-        assert!(send.try_send(5));
+        assert!(send.try_send(5).is_ok());
         assert_eq!(recv.try_recv(), Some(5));
     }
 
     #[test]
     fn drain() {
         let (send, recv) = channel(4);
-        assert!(send.try_send(4));
-        assert!(send.try_send(5));
+        assert!(send.try_send(4).is_ok());
+        assert!(send.try_send(5).is_ok());
         assert_eq!(recv.try_recv(), Some(4));
         assert_eq!(recv.try_recv(), Some(5));
         assert_eq!(recv.try_recv(), None);
@@ -233,11 +233,11 @@ mod test {
     #[test]
     fn full() {
         let (send, recv) = channel(4);
-        assert!(send.try_send(4));
-        assert!(send.try_send(5));
-        assert!(send.try_send(6));
-        assert!(send.try_send(7));
-        assert!(!send.try_send(8));
+        assert!(send.try_send(4).is_ok());
+        assert!(send.try_send(5).is_ok());
+        assert!(send.try_send(6).is_ok());
+        assert!(send.try_send(7).is_ok());
+        assert_eq!(send.try_send(8), Err(8));
         assert_eq!(recv.try_recv(), Some(4));
         assert_eq!(recv.try_recv(), Some(5));
         assert_eq!(recv.try_recv(), Some(6));
@@ -262,9 +262,9 @@ mod test {
 
         {
             let (send, recv) = channel(4);
-            assert!(send.try_send(WithDrop(drop_count.clone())));
-            assert!(send.try_send(WithDrop(drop_count.clone())));
-            assert!(send.try_send(WithDrop(drop_count.clone())));
+            assert!(send.try_send(WithDrop(drop_count.clone())).is_ok());
+            assert!(send.try_send(WithDrop(drop_count.clone())).is_ok());
+            assert!(send.try_send(WithDrop(drop_count.clone())).is_ok());
 
             {
                 let v = recv.try_recv();
