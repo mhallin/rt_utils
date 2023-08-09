@@ -25,6 +25,10 @@ impl<T> Sender<T> {
     pub fn size(&self) -> usize {
         self.buffer.available_write()
     }
+
+    pub fn is_receiver_active(&self) -> bool {
+        Arc::strong_count(&self.buffer) == 2
+    }
 }
 
 impl<T> Receiver<T> {
@@ -34,6 +38,10 @@ impl<T> Receiver<T> {
 
     pub fn size(&self) -> usize {
         self.buffer.available_read()
+    }
+
+    pub fn is_sender_active(&self) -> bool {
+        Arc::strong_count(&self.buffer) == 2
     }
 }
 
@@ -267,5 +275,21 @@ mod test {
         }
 
         assert_eq!(drop_count.get(), 3);
+    }
+
+    #[test]
+    fn is_receiver_active() {
+        let (send, recv) = channel::<i8>(4);
+        assert!(send.is_receiver_active());
+        drop(recv);
+        assert!(!send.is_receiver_active());
+    }
+
+    #[test]
+    fn is_sender_active() {
+        let (send, recv) = channel::<i8>(4);
+        assert!(recv.is_sender_active());
+        drop(send);
+        assert!(!recv.is_sender_active());
     }
 }
